@@ -4,7 +4,7 @@
 
 use crate::either::EitherCart;
 #[cfg(feature = "alloc")]
-use crate::erased::{ErasedBoxCart, ErasedRcCart};
+use crate::erased::{ErasedBoxCart, ErasedRcCart, ErasedArcCart};
 use crate::trait_hack::YokeTraitHack;
 use crate::IsCovariant;
 use crate::Yokeable;
@@ -882,6 +882,50 @@ impl<Y: for<'a> Yokeable<'a>, C: 'static + Sized> Yoke<Y, Rc<C>> {
 }
 
 #[cfg(feature = "alloc")]
+impl<Y: for<'a> Yokeable<'a>, C: 'static + Sized> Yoke<Y, Arc<C>> {
+    /// Allows type-erasing the cart in a `Yoke<Y, Arc<C>>`.
+    ///
+    /// The yoke only carries around a cart type `C` for its destructor,
+    /// since it needs to be able to guarantee that its internal references
+    /// are valid for the lifetime of the Yoke. As such, the actual type of the
+    /// Cart is not very useful unless you wish to extract data out of it
+    /// via [`Yoke::backing_cart()`]. Erasing the cart allows for one to mix
+    /// [`Yoke`]s obtained from different sources.
+    ///
+    /// In case the cart type `C` is not already an `Arc<T>`, you can use
+    /// [`Yoke::wrap_cart_in_arc()`] to wrap it.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use std::sync::Arc;
+    /// use yoke::erased::ErasedArcCart;
+    /// use yoke::Yoke;
+    ///
+    /// let buffer1: Arc<String> = Arc::new("   foo bar baz  ".into());
+    /// let buffer2: Box<String> = Box::new("  baz quux  ".into());
+    ///
+    /// let yoke1 = Yoke::<&'static str, _>::attach_to_cart(buffer1, |arc| arc.trim());
+    /// let yoke2 = Yoke::<&'static str, _>::attach_to_cart(buffer2, |b| b.trim());
+    ///
+    /// let erased1: Yoke<_, ErasedArcCart> = yoke1.erase_arc_cart();
+    /// // Wrap the Box in an Arc to make it compatible
+    /// let erased2: Yoke<_, ErasedArcCart> = yoke2.wrap_cart_in_arc().erase_arc_cart();
+    ///
+    /// // Now erased1 and erased2 have the same type!
+    /// ```
+    ///
+    /// Available with the `"alloc"` feature enabled.
+    pub fn erase_arc_cart(self) -> Yoke<Y, ErasedArcCart> {
+        unsafe {
+            // safe because the cart is preserved, just
+            // type-erased
+            self.replace_cart(|c| c as ErasedArcCart)
+        }
+    }
+}
+
+#[cfg(feature = "alloc")]
 impl<Y: for<'a> Yokeable<'a>, C: 'static + Sized> Yoke<Y, Box<C>> {
     /// Allows type-erasing the cart in a `Yoke<Y, Box<C>>`.
     ///
@@ -950,6 +994,18 @@ impl<Y: for<'a> Yokeable<'a>, C> Yoke<Y, C> {
             self.replace_cart(Rc::new)
         }
     }
+    /// Helper function allowing one to wrap the cart type `C` in an `Arc<T>`.
+    /// Can be paired with [`Yoke::erase_arc_cart()`], or generally used
+    /// to make the [`Yoke`] cloneable.
+    ///
+    /// Available with the `"alloc"` feature enabled.
+    #[inline]
+    pub fn wrap_cart_in_arc(self) -> Yoke<Y, Arc<C>> {
+        unsafe {
+            // safe because the cart is preserved, just wrapped
+            self.replace_cart(Arc::new)
+        }
+    }
 }
 
 impl<Y: for<'a> Yokeable<'a>, C> Yoke<Y, C> {
@@ -1004,7 +1060,7 @@ impl<Y: for<'a> Yokeable<'a>, C> Yoke<Y, C> {
 /// # use yoke::Yoke;
 /// # use std::borrow::Cow;
 /// fn borrow_potentially_owned(y: &Yoke<Cow<'static, str>, Rc<[u8]>>) -> Yoke<&'static str, Rc<[u8]>> {
-///    y.map_project_cloned(|cow, _| &*cow)   
+///    y.map_project_cloned(|cow, _| &*cow)
 /// }
 /// ```
 ///
@@ -1017,7 +1073,7 @@ impl<Y: for<'a> Yokeable<'a>, C> Yoke<Y, C> {
 /// # use yoke::Yoke;
 /// # use std::borrow::Cow;
 /// fn borrow_potentially_owned(y: Yoke<Cow<'static, str>, Rc<[u8]>>) -> Yoke<&'static str, Rc<[u8]>> {
-///    y.map_project(|cow, _| &*cow)   
+///    y.map_project(|cow, _| &*cow)
 /// }
 /// ```
 ///
@@ -1039,7 +1095,7 @@ impl<Y: for<'a> Yokeable<'a>, C> Yoke<Y, C> {
 ///
 /// fn map_project_owned(bar: &Yoke<Bar<'static>, Rc<[u8]>>) -> Yoke<&'static str, Rc<[u8]>> {
 ///     // ERROR (but works if you replace owned with string_2)
-///     bar.map_project_cloned(|bar, _| &*bar.owned)   
+///     bar.map_project_cloned(|bar, _| &*bar.owned)
 /// }
 ///
 /// #

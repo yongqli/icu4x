@@ -11,6 +11,7 @@
 
 use alloc::boxed::Box;
 use alloc::rc::Rc;
+use alloc::sync::Arc;
 
 /// Dummy trait that lets us `dyn Drop`
 ///
@@ -26,6 +27,12 @@ impl<T: 'static> ErasedDestructor for T {}
 ///
 /// Available with the `"alloc"` feature enabled.
 pub type ErasedRcCart = Rc<dyn ErasedDestructor>;
+/// A type-erased Cart that has `Arc` semantics
+///
+/// See the docs of [`Yoke::erase_arc_cart()`](crate::Yoke::erase_arc_cart) for more info.
+///
+/// Available with the `"alloc"` feature enabled.
+pub type ErasedArcCart = Arc<dyn ErasedDestructor>;
 /// A type-erased Cart that has `Box` semantics
 ///
 /// See the docs of [`Yoke::erase_box_cart()`](crate::Yoke::erase_box_cart) for more info.
